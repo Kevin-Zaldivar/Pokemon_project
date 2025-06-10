@@ -1,22 +1,62 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'firebase_options.dart';
+import 'auth_wrapper.dart';
+import 'auth_service.dart';
+import 'screens/poke_list_page.dart';
 
 void main() {
   runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+  const MyApp({super.key});
+
+  // Inicializamos Firebase con opciones según la plataforma
+  Future<FirebaseApp> _initializeFirebase() async {
+    return await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: "Agenda",
-      theme: ThemeData(
-        primarySwatch: Colors.green,
-        visualDensity: VisualDensity.adaptivePlatformDensity,
-      ),
-      home: const HomePage(),
-      debugShowCheckedModeBanner: false,
+    return FutureBuilder(
+      future: _initializeFirebase(),
+      builder: (context, snapshot) {
+        // Mostramos loading mientras inicializa Firebase
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const MaterialApp(
+            home: Scaffold(body: Center(child: CircularProgressIndicator())),
+          );
+        }
+
+        // En caso de error
+        if (snapshot.hasError) {
+          return MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: Text(
+                  'Error inicializando Firebase: ${snapshot.error}',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          );
+        }
+
+        // Firebase se inicializó correctamente → mostrar la app
+        return MaterialApp(
+          title: 'Flutter Firebase Auth',
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+            useMaterial3: true,
+          ),
+          debugShowCheckedModeBanner: false,
+          home: const AuthWrapper(),
+        );
+      },
     );
   }
 }
@@ -33,13 +73,16 @@ class _HomePageState extends State<HomePage>
   late TabController _tabController;
   int _currentIndex = 0;
   double _scale = 1.0;
+  final AuthService _authService = AuthService();
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(() {
-      _currentIndex = _tabController.index;
+      setState(() {
+        _currentIndex = _tabController.index;
+      });
     });
   }
 
@@ -52,7 +95,7 @@ class _HomePageState extends State<HomePage>
   void _showSnackBar(
     BuildContext context,
     String message, {
-    Color backgroundColor = Colors.greenAccent,
+    Color backgroundColor = const Color.fromARGB(255, 33, 229, 243),
   }) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -60,8 +103,8 @@ class _HomePageState extends State<HomePage>
         backgroundColor: backgroundColor,
         duration: const Duration(seconds: 2),
         action: SnackBarAction(
-          label: 'Cerrar',
-          textColor: Colors.black,
+          label: 'OK',
+          textColor: Colors.white,
           onPressed: () {
             ScaffoldMessenger.of(context).hideCurrentSnackBar();
           },
@@ -72,75 +115,337 @@ class _HomePageState extends State<HomePage>
 
   @override
   Widget build(BuildContext context) {
+    final user = _authService.currentUser;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Mi agenda personal"),
+        title: Text('Hola, ${user?.displayName?.split(' ')[0] ?? 'Usuario'}'),
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
-            Tab(icon: Icon(Icons.home_work), text: "Tareas"),
-            Tab(icon: Icon(Icons.note_add_sharp), text: "Notas"),
-            Tab(icon: Icon(Icons.contact_page), text: "Contactos"),
+            Tab(icon: Icon(Icons.home), text: 'Inicio'),
+            Tab(icon: Icon(Icons.favorite), text: 'Favoritos'),
+            Tab(icon: Icon(Icons.settings), text: 'Ajustes'),
           ],
         ),
+
+        ///////////////
         actions: [
           IconButton(
             icon: const Icon(Icons.notifications),
             onPressed: () {
-              _showSnackBar(context, 'Notificaciones han sido presionadas');
+              _showSnackBar(context, 'Notificaciones presionadas');
+            },
+          ),
+          // Botón de logout
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              await _authService.signOut();
+              Navigator.of(context).pushReplacementNamed('/login');
             },
           ),
         ],
-      ),
-
-      body: TabBarView(
-        controller: _tabController,
-        children: const [TareasTab(), NotasTab(), ContactosTab()],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          _showSnackBar(
-            context,
-            'Floating ha sido presionado en la tab: ${_tabController.index + 1}',
-          );
-        },
-        child: const Icon(Icons.add),
-        tooltip: "Agregar",
       ),
       drawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
           children: <Widget>[
-            const DrawerHeader(
-              decoration: BoxDecoration(color: Colors.green),
-              child: Text(
-                'Menu',
-                style: TextStyle(color: Colors.black, fontSize: 24),
+            UserAccountsDrawerHeader(
+              decoration: const BoxDecoration(
+                color: Color.fromARGB(255, 0, 62, 150),
+              ),
+              accountName: Text(user?.displayName ?? 'Usuario'),
+              accountEmail: Text(user?.email ?? 'email@example.com'),
+              currentAccountPicture: CircleAvatar(
+                backgroundImage:
+                    user?.photoURL != null
+                        ? NetworkImage(user!.photoURL!)
+                        : null,
+                child:
+                    user?.photoURL == null
+                        ? const Icon(Icons.person, size: 40)
+                        : null,
               ),
             ),
             ListTile(
-              leading: const Icon(Icons.home_work),
-              title: const Text("Tareas"),
+              leading: const Icon(Icons.home),
+              title: const Text('Inicio'),
               onTap: () {
                 _tabController.animateTo(0);
                 Navigator.pop(context);
               },
             ),
             ListTile(
-              leading: const Icon(Icons.note_add),
-              title: const Text("Notas"),
+              leading: const Icon(Icons.catching_pokemon),
+              title: const Text('Pokémon'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const PokemonListPage()),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.favorite),
+              title: const Text('Favoritos'),
               onTap: () {
                 _tabController.animateTo(1);
                 Navigator.pop(context);
               },
             ),
             ListTile(
-              leading: const Icon(Icons.contact_page),
-              title: const Text("Contactos"),
+              leading: const Icon(Icons.settings),
+              title: const Text('Ajustes'),
               onTap: () {
                 _tabController.animateTo(2);
                 Navigator.pop(context);
               },
+            ),
+            ListTile(
+              leading: const Icon(Icons.person),
+              title: const Text('Mi Perfil'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => PerfilPage(user: user),
+                  ),
+                );
+              },
+            ),
+
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.logout),
+              title: const Text('Cerrar Sesión'),
+              onTap: () async {
+                await _authService.signOut();
+                Navigator.of(context).pushReplacementNamed('/login');
+              },
+            ),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          // Primer tab - Inicio con información del usuario
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (user?.photoURL != null)
+                  CircleAvatar(
+                    radius: 50,
+                    backgroundImage: NetworkImage(user!.photoURL!),
+                  ),
+                const SizedBox(height: 20),
+                Text(
+                  '¡Bienvenido, ${user?.displayName ?? 'Usuario'}!',
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  user?.email ?? 'email@example.com',
+                  style: const TextStyle(fontSize: 16, color: Colors.black),
+                ),
+                const SizedBox(height: 30),
+                GestureDetector(
+                  onTap: () {
+                    _showSnackBar(context, 'Contenedor presionado');
+                  },
+                  onDoubleTap: () {
+                    setState(() {
+                      _scale = _scale == 1.0 ? 1.5 : 1.0;
+                    });
+                    _showSnackBar(
+                      context,
+                      'Contenedor escalado: ${_scale == 1.5 ? 'Ampliado' : 'Normal'}',
+                      backgroundColor: Colors.cyan,
+                    );
+                  },
+                  child: AnimatedScale(
+                    scale: _scale,
+                    duration: const Duration(milliseconds: 300),
+                    child: Container(
+                      width: 200,
+                      height: 200,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        color: Colors.cyan,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            spreadRadius: 2,
+                            blurRadius: 5,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: const Center(
+                        child: Icon(
+                          Icons.touch_app,
+                          size: 50,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Segundo tab - Favoritos (mantienes tu contenido actual)
+          ListView(
+            padding: const EdgeInsets.all(16.0),
+            children: [
+              CustomCard(
+                title: 'Pokemones Hielo',
+                description: 'Favoritos de tipo Hielo',
+                onPressed: () {
+                  _showSnackBar(
+                    context,
+                    'Tarjeta 1 presionada',
+                    backgroundColor: Colors.lightBlue,
+                  );
+                },
+                useIcon: true,
+                icon: Icons.ac_unit,
+                iconColor: Colors.lightBlue,
+              ),
+              const SizedBox(height: 16.0),
+              CustomCard(
+                title: 'Pokemones tipo Fuego',
+                description: 'Favoritos de tipo Fuego',
+                onPressed: () {
+                  _showSnackBar(
+                    context,
+                    'Tarjeta 2 presionada',
+                    backgroundColor: Colors.orange,
+                  );
+                },
+                useIcon: true,
+                icon: Icons.fire_extinguisher,
+                iconColor: Colors.red,
+              ),
+              const SizedBox(height: 16.0),
+              CustomCard(
+                title: 'Pokemones tipo Agua',
+                description: 'Favoritos de tipo Agua',
+                onPressed: () {
+                  _showSnackBar(
+                    context,
+                    'Tarjeta 3 presionada',
+                    backgroundColor: Colors.blue,
+                  );
+                },
+                useIcon: true,
+                icon: Icons.water,
+                iconColor: Colors.blue,
+              ),
+            ],
+          ),
+          // Tercer tab - Ajustes
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text(
+                  'Pantalla de Ajustes',
+                  style: TextStyle(fontSize: 24),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: () {
+                    _showSnackBar(
+                      context,
+                      'Ajustes guardados',
+                      backgroundColor: Colors.green,
+                    );
+                  },
+                  child: const Text('Guardar ajustes'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          _showSnackBar(
+            context,
+            'FloatingActionButton presionado en Tab: ${_tabController.index + 1}',
+          );
+        },
+        child: const Icon(Icons.add),
+        tooltip: 'Agregar',
+      ),
+    );
+  }
+}
+
+// Widget personalizado (CustomCard)
+class CustomCard extends StatelessWidget {
+  final String title;
+  final String description;
+  final VoidCallback onPressed;
+  final bool useIcon;
+  final IconData icon;
+  final Color iconColor;
+
+  const CustomCard({
+    Key? key,
+    required this.title,
+    required this.description,
+    required this.onPressed,
+    this.useIcon = false,
+    this.icon = Icons.star,
+    this.iconColor = Colors.amber,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 4.0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.0)),
+      child: InkWell(
+        onTap: onPressed,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (useIcon)
+              Container(
+                height: 120,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: iconColor.withOpacity(0.2),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(10.0),
+                  ),
+                ),
+                child: Icon(icon, size: 60, color: iconColor),
+                alignment: Alignment.center,
+              ),
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 18.0,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8.0),
+                  Text(description),
+                ],
+              ),
             ),
           ],
         ),
@@ -149,273 +454,44 @@ class _HomePageState extends State<HomePage>
   }
 }
 
-//--------------------TAREAS------------------------
-class TareasTab extends StatefulWidget {
-  const TareasTab({super.key});
+class PerfilPage extends StatelessWidget {
+  final User? user;
 
-  @override
-  State<TareasTab> createState() => _TareasTabState();
-}
-
-class _TareasTabState extends State<TareasTab> {
-  final List<Map<String, dynamic>> tareas = [
-    {
-      'titulo': 'Examen de Programacion Movil',
-      'descripcion':
-          'Repasar teoria y practicar con ejercicios en flutter para mi examen',
-      'completada': false,
-    },
-    {
-      'titulo': 'Trabajo en clase',
-      'descripcion': 'Trabajo en clase, se entrega el jueves 22 de mayo',
-      'completada': false,
-    },
-    {
-      'titulo': 'Tarea 4 Fisica',
-      'descripcion': 'Tarea Leyes de Newton, se entrega el domingo 25 de mayo',
-      'completada': false,
-    },
-  ];
-
-  void _toggleTarea(int index) {
-    setState(() {
-      tareas[index]['completada'] = !(tareas[index]['completada'] as bool);
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          tareas[index]['completada'] ? 'Tarea completada' : 'Tarea pendiente',
-        ),
-        duration: const Duration(seconds: 1),
-      ),
-    );
-  }
+  const PerfilPage({super.key, required this.user});
 
   @override
   Widget build(BuildContext context) {
-    return ListView.builder(
-      itemCount: tareas.length,
-      itemBuilder: (context, index) {
-        final tarea = tareas[index];
-        return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color:
-                tarea['completada']
-                    ? const Color.fromARGB(255, 143, 215, 145)
-                    : Colors.red[100],
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: ListTile(
-            title: Text(
-              tarea['titulo'],
-              style: TextStyle(
-                decoration:
-                    tarea['completada']
-                        ? TextDecoration.lineThrough
-                        : TextDecoration.none,
-                fontWeight: FontWeight.bold,
+    return Scaffold(
+      appBar: AppBar(title: const Text('Mi Perfil')),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (user?.photoURL != null)
+                CircleAvatar(
+                  radius: 50,
+                  backgroundImage: NetworkImage(user!.photoURL!),
+                ),
+              const SizedBox(height: 20),
+              Text(
+                user?.displayName ?? 'Usuario sin nombre',
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            ),
-            subtitle: Text(tarea['descripcion']),
-            trailing: Icon(
-              tarea['completada']
-                  ? Icons.check_circle
-                  : Icons.radio_button_unchecked,
-              color: tarea['completada'] ? Colors.green : Colors.red,
-            ),
-            onTap: () => _toggleTarea(index),
-          ),
-        );
-      },
-    );
-  }
-}
-
-//----------------NOTAS------------------
-class NotasTab extends StatefulWidget {
-  const NotasTab({Key? key}) : super(key: key);
-
-  @override
-  State<NotasTab> createState() => _NotasTabState();
-}
-
-class _NotasTabState extends State<NotasTab> {
-  final List<bool> _agrandada = [false, false];
-
-  void _toggleZoom(int index) {
-    setState(() {
-      _agrandada[index] = !_agrandada[index];
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(_agrandada[index] ? 'Nota agrandada' : 'Nota reducida'),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(12),
-      children: [
-        GestureDetector(
-          onDoubleTap: () => _toggleZoom(0),
-          child: NotaCard(
-            titulo: "Recordar Clase de Programacion Movil",
-            contenido: "Clase de Programacion Movil, sabados 1:30 PM",
-            agrandada: _agrandada[0],
+              const SizedBox(height: 8),
+              Text(user?.email ?? 'Correo no disponible'),
+              const SizedBox(height: 20),
+              Text(
+                'UID: ${user?.uid ?? 'N/A'}',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 16),
-        GestureDetector(
-          onDoubleTap: () => _toggleZoom(1),
-          child: NotaCard(
-            titulo: "Ideas de proyecto",
-            contenido: "Aplicación, proyecto de cartas pokemon.",
-            agrandada: _agrandada[1],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class NotaCard extends StatelessWidget {
-  final String titulo;
-  final String contenido;
-  final bool agrandada;
-
-  const NotaCard({
-    Key? key,
-    required this.titulo,
-    required this.contenido,
-    required this.agrandada,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.amber.shade100,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow:
-            agrandada
-                ? [
-                  BoxShadow(
-                    color: Colors.amber.shade300,
-                    blurRadius: 10,
-                    spreadRadius: 2,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-                : [],
-      ),
-      width: double.infinity,
-      height: agrandada ? 200 : 120,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            titulo,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 10),
-          Expanded(
-            child: Text(
-              contenido,
-              style: const TextStyle(fontSize: 16),
-              overflow: TextOverflow.fade,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-//-----------------------CONTACTOS--------------------------
-class ContactosTab extends StatefulWidget {
-  const ContactosTab({Key? key}) : super(key: key);
-
-  @override
-  State<ContactosTab> createState() => _ContactosTabState();
-}
-
-class _ContactosTabState extends State<ContactosTab> {
-  final List<Map<String, String>> _contactos = [
-    {'nombre': 'Kevin Zaldívar', 'telefono': '9876-5432'},
-    {'nombre': 'Fabio Lagos', 'telefono': '9988-1122'},
-    {'nombre': 'Nelson Acosta', 'telefono': '9486-1378'},
-  ];
-
-  void _guardarCambios() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Cambios guardados correctamente'),
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Expanded(
-          child: ListView.builder(
-            itemCount: _contactos.length,
-            itemBuilder: (context, index) {
-              final contacto = _contactos[index];
-              return ContactoCard(
-                nombre: contacto['nombre']!,
-                telefono: contacto['telefono']!,
-              );
-            },
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: ElevatedButton.icon(
-            onPressed: _guardarCambios,
-            icon: const Icon(Icons.save),
-            label: const Text('Guardar Cambios'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class ContactoCard extends StatelessWidget {
-  final String nombre;
-  final String telefono;
-
-  const ContactoCard({Key? key, required this.nombre, required this.telefono})
-    : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      elevation: 4,
-      child: ListTile(
-        leading: const CircleAvatar(
-          backgroundColor: Colors.green,
-          child: Icon(Icons.person, color: Colors.white),
-        ),
-        title: Text(nombre),
-        subtitle: Text("Teléfono: $telefono"),
       ),
     );
   }
