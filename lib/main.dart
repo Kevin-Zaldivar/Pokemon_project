@@ -1,10 +1,11 @@
+import 'package:ejercicio_clase/screens/favorites_by_type_page.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'firebase_options.dart';
 import 'auth_wrapper.dart';
 import 'auth_service.dart';
 import 'screens/poke_list_page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const MyApp());
@@ -15,9 +16,7 @@ class MyApp extends StatelessWidget {
 
   // Inicializamos Firebase con opciones según la plataforma
   Future<FirebaseApp> _initializeFirebase() async {
-    return await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+    return await Firebase.initializeApp();
   }
 
   @override
@@ -71,6 +70,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  bool isDarkMode = false;
   int _currentIndex = 0;
   double _scale = 1.0;
   final AuthService _authService = AuthService();
@@ -83,6 +83,24 @@ class _HomePageState extends State<HomePage>
       setState(() {
         _currentIndex = _tabController.index;
       });
+    });
+    _loadTheme(); // ← Carga el tema almacenado
+  }
+
+  // 🔹 Carga el estado de modo oscuro al iniciar
+  void _loadTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      isDarkMode = prefs.getBool('isDarkMode') ?? false;
+    });
+  }
+
+  // 🔹 Cambia y guarda el nuevo estado de modo oscuro
+  void toggleTheme(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isDarkMode', value);
+    setState(() {
+      isDarkMode = value;
     });
   }
 
@@ -138,13 +156,6 @@ class _HomePageState extends State<HomePage>
             },
           ),
           // Botón de logout
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await _authService.signOut();
-              Navigator.of(context).pushReplacementNamed('/login');
-            },
-          ),
         ],
       ),
       drawer: Drawer(
@@ -230,145 +241,66 @@ class _HomePageState extends State<HomePage>
       body: TabBarView(
         controller: _tabController,
         children: [
-          // Primer tab - Inicio con información del usuario
           Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                if (user?.photoURL != null)
-                  CircleAvatar(
-                    radius: 50,
-                    backgroundImage: NetworkImage(user!.photoURL!),
-                  ),
-                const SizedBox(height: 20),
                 Text(
                   '¡Bienvenido, ${user?.displayName ?? 'Usuario'}!',
                   style: const TextStyle(
-                    fontSize: 24,
+                    fontSize: 28,
                     fontWeight: FontWeight.bold,
+                    fontFamily: 'PokemonSolid',
+                    color: Colors.indigo,
                   ),
+                  textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 10),
-                Text(
-                  user?.email ?? 'email@example.com',
-                  style: const TextStyle(fontSize: 16, color: Colors.black),
+                const SizedBox(height: 24),
+                Image.asset(
+                  'assets/icons/welcome.gif', // ← asegúrate de que esta ruta exista
+                  height: 200,
+                  fit: BoxFit.contain,
                 ),
                 const SizedBox(height: 30),
-                GestureDetector(
-                  onTap: () {
-                    _showSnackBar(context, 'Contenedor presionado');
-                  },
-                  onDoubleTap: () {
-                    setState(() {
-                      _scale = _scale == 1.0 ? 1.5 : 1.0;
-                    });
-                    _showSnackBar(
-                      context,
-                      'Contenedor escalado: ${_scale == 1.5 ? 'Ampliado' : 'Normal'}',
-                      backgroundColor: Colors.cyan,
-                    );
-                  },
-                  child: AnimatedScale(
-                    scale: _scale,
-                    duration: const Duration(milliseconds: 300),
-                    child: Container(
-                      width: 200,
-                      height: 200,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10),
-                        color: Colors.cyan,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
-                            spreadRadius: 2,
-                            blurRadius: 5,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
-                      ),
-                      child: const Center(
-                        child: Icon(
-                          Icons.touch_app,
-                          size: 50,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
+
           // Segundo tab - Favoritos (mantienes tu contenido actual)
-          ListView(
-            padding: const EdgeInsets.all(16.0),
-            children: [
-              CustomCard(
-                title: 'Pokemones Hielo',
-                description: 'Favoritos de tipo Hielo',
-                onPressed: () {
-                  _showSnackBar(
-                    context,
-                    'Tarjeta 1 presionada',
-                    backgroundColor: Colors.lightBlue,
-                  );
-                },
-                useIcon: true,
-                icon: Icons.ac_unit,
-                iconColor: Colors.lightBlue,
-              ),
-              const SizedBox(height: 16.0),
-              CustomCard(
-                title: 'Pokemones tipo Fuego',
-                description: 'Favoritos de tipo Fuego',
-                onPressed: () {
-                  _showSnackBar(
-                    context,
-                    'Tarjeta 2 presionada',
-                    backgroundColor: Colors.orange,
-                  );
-                },
-                useIcon: true,
-                icon: Icons.fire_extinguisher,
-                iconColor: Colors.red,
-              ),
-              const SizedBox(height: 16.0),
-              CustomCard(
-                title: 'Pokemones tipo Agua',
-                description: 'Favoritos de tipo Agua',
-                onPressed: () {
-                  _showSnackBar(
-                    context,
-                    'Tarjeta 3 presionada',
-                    backgroundColor: Colors.blue,
-                  );
-                },
-                useIcon: true,
-                icon: Icons.water,
-                iconColor: Colors.blue,
-              ),
-            ],
-          ),
+          const FavoritesByTypePage(),
+
           // Tercer tab - Ajustes
-          Center(
+          Padding(
+            padding: const EdgeInsets.all(16),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Pantalla de Ajustes',
-                  style: TextStyle(fontSize: 24),
+                  'Configuración',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontFamily: 'PokemonSolid',
+                    color: Colors.indigo,
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                ListTile(
+                  leading: const Icon(Icons.logout, color: Colors.redAccent),
+                  title: const Text('Cerrar sesión'),
+                  onTap: () async {
+                    await FirebaseAuth.instance.signOut();
+                  },
+                ),
+                const Spacer(),
+                Center(
+                  child: Image.asset(
+                    'assets/icons/credits.gif',
+                    height: 180,
+                    fit: BoxFit.contain,
+                  ),
                 ),
                 const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: () {
-                    _showSnackBar(
-                      context,
-                      'Ajustes guardados',
-                      backgroundColor: Colors.green,
-                    );
-                  },
-                  child: const Text('Guardar ajustes'),
-                ),
               ],
             ),
           ),

@@ -14,27 +14,58 @@ class AuthService {
   // Login con Google
   Future<UserCredential?> signInWithGoogle() async {
     try {
-      // Iniciar el proceso de autenticación
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      if (googleUser == null) return null;
 
-      if (googleUser == null) {
-        return null; // El usuario canceló el login
-      }
+      final googleAuth = await googleUser.authentication;
 
-      // Obtener los detalles de autenticación
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
-
-      // Crear credenciales para Firebase
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
-      // Iniciar sesión en Firebase
       return await _auth.signInWithCredential(credential);
     } catch (e) {
-      print('Error durante el login: $e');
+      print('🔴 Error durante el login con Google: $e');
+      return null;
+    }
+  }
+
+  // Login con Email y Contraseña
+  Future<UserCredential?> signInWithEmail(String email, String password) async {
+    try {
+      return await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+    } catch (e) {
+      print('🔴 Error al iniciar sesión con email: $e');
+      return null;
+    }
+  }
+
+  // Registro con Email y Contraseña
+  Future<UserCredential?> registerWithEmail(
+    String email,
+    String password,
+  ) async {
+    try {
+      return await _auth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+    } catch (e) {
+      print('🟡 Error al registrar nuevo usuario: $e');
+      return null;
+    }
+  }
+
+  // Login como invitado (anónimo)
+  Future<UserCredential?> signInAnonymously() async {
+    try {
+      return await _auth.signInAnonymously();
+    } catch (e) {
+      print('🕶️ Error al iniciar como invitado: $e');
       return null;
     }
   }
